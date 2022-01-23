@@ -4,18 +4,15 @@ using UnityEngine;
 
 public class SkateboardMover : MonoBehaviour, IMover
 {
+	#region OLD
 	Rigidbody controller;
 	Vector3 velocity = Vector3.zero;
 
 	public Animator stateManager;
 	public float skinWidth = 0.1f;
-
-	public float jumpForce = 10f;
-	public float pushForce = 10f;
-	public float maxPushSpeed = 10f;
-	public float turnSpeed = 10f;
 	public float leavingGroundThreashold = 0.5f;
 	public bool rollingSwitch = false;
+	public PlayerSettings playerSettings;
 
 	float currentRollingSpeed = 0;
 	float currentFallingSpeed = 0;
@@ -31,14 +28,67 @@ public class SkateboardMover : MonoBehaviour, IMover
 	bool inRamp = false;
 	GameObject lastObjectTouched = null;
 	Ramp lastRamp = null;
+	#endregion
+
+	public Animator stateHandler;
+
+	[System.Serializable]
+	public class State
+	{
+		public string stateName;
+		public MovementState state;
+	}
+	private State currentState;
+	[SerializeField]
+	public List<State> states;
+
+	Rigidbody Rb => currentState.state.rb;
+
+	public static RaycastHit? GetDownHit(Rigidbody rb)
+	{
+		Ray ray = new Ray(rb.position + rb.Up(), -rb.Up());
+		float rayLength = 1.1f;
+		if (Physics.Raycast(ray, out RaycastHit hit, rayLength, LayerMask.GetMask("Terrain") | LayerMask.GetMask("Ramp")))
+			return hit;
+		return null;
+	}
+
+	public bool Grounded { get => isGrounded; }
 
 	void Start()
 	{
-		controller = GetComponent<Rigidbody>();
+		foreach(var state in states)
+			state.state.enabled = false;
+
+		//currentState.state.Enter(Vector3.zero);
+		//controller = GetComponent<Rigidbody>();
 	}
 
 	void Update()
 	{
+		if (Input.GetKeyDown(KeyCode.KeypadEnter))
+			stateHandler.SetBool("NoClip", !stateHandler.GetBool("NoClip"));
+
+		if (Input.GetKeyDown(KeyCode.Space))
+			stateHandler.SetBool("Jumping", true);
+
+		foreach (var state in states)
+		{
+			//When entering the state in the Animator, switch to that state in the internal states
+			if (stateHandler.GetCurrentAnimatorStateInfo(0).IsName(state.stateName))
+			{
+				SwitchStates(state);
+			}
+		}
+
+		//if (Input.GetKeyUp(KeyCode.Space))
+		//{
+		//	SwitchStates(GetState("Airborn"), Vector3.up * 5f);
+		//}
+
+		//Debug.Log(Rb.velocity);
+
+		/*
 		if (Input.GetKeyUp(KeyCode.Space))
 			shouldJump = true;
 
@@ -59,15 +109,54 @@ public class SkateboardMover : MonoBehaviour, IMover
 
 		stateManager.SetBool("InRamp", inRamp);
 		stateManager.SetBool("TouchingGround", isGrounded);
+		shouldJump = false;
+		*/
 	}
 
 	private void FixedUpdate()
 	{
+		if (currentState == null)
+			return;
+
+		stateHandler.SetBool("Grounded", GetDownHit(Rb) != null);
+		stateHandler.SetFloat("XVel", Rb.velocity.x);
+		stateHandler.SetFloat("YVel", Rb.velocity.y);
+		stateHandler.SetFloat("ZVel", Rb.velocity.z);
+
+		/*
 		Vector3 m_EulerAngleVelocity = new Vector3(0, turnInput * (wasAirborn? 2000f : 1000f), 0);
 		Quaternion q = controller.rotation * Quaternion.Euler(m_EulerAngleVelocity * Time.fixedDeltaTime);
 
 		controller.MoveRotation(q);
 		controller.MovePosition(controller.position + (velocity * Time.fixedDeltaTime));
+
+		CheckForWallCollisions();
+		*/
+	}
+
+	State GetState(string stateName)
+	{
+		foreach (var state in states)
+			if (state.stateName == stateName)
+				return state;
+		return null;
+	}
+
+	void SwitchStates(State newState)
+	{
+		if (newState == currentState)
+			return;
+
+		Debug.Log($"State Change: {newState.stateName}");
+
+		if (currentState != null)
+		{
+			currentState.state.Exit();
+			currentState.state.enabled = false;
+		}
+		newState.state.enabled = true;
+		newState.state.Enter();
+		currentState = newState;
 	}
 
 	Vector3 rampLocation;
@@ -77,14 +166,36 @@ public class SkateboardMover : MonoBehaviour, IMover
 	void MoveOnRamp()
 	{
 		rampLocation = lastRamp.curveMath.CalcPositionByClosestPoint(controller.position, out float distance);
+		rampTangent = lastRamp.curveMath.CalcTangentByDistance(distance);
 
-		if (distance < 0.5f || distance > lastRamp.curveMath.GetDistance(lastRamp.curve.PointsCount - 1) - 0.5f || Vector3.Distance(Vector3.Scale(controller.position, flattenScale), Vector3.Scale(rampLocation, flattenScale)) > 1f)
+		//front or back
+		if (Vector3.Distance(Vector3.Scale(controller.position, flattenScale), Vector3.Scale(rampLocation, flattenScale)) > 1f)
 		{
 			inRamp = false;
+			lastNormal = Vector3.up;
 			return;
 		}
 
-		rampTangent = lastRamp.curveMath.CalcTangentByDistance(distance);
+		//left side
+		if (distance < 0.5f)
+		{
+			inRamp = false;
+			lastNormal = Vector3.up;
+			lastForward = -rampTangent;
+			controller.rotation = Quaternion.LookRotation(lastForward, lastNormal);
+			return;
+		}
+
+		//right side
+		if (distance > lastRamp.curveMath.GetDistance(lastRamp.curve.PointsCount - 1) - 0.5f)
+		{ 
+			inRamp = false;
+			lastNormal = Vector3.up;
+			lastForward = rampTangent;
+			controller.rotation = Quaternion.LookRotation(lastForward, lastNormal);
+			return;
+		}
+
 		rampNormal = Vector3.Cross(Vector3.up, rampTangent);
 		SetUp(rampNormal);
 		ApplyGravity();
@@ -99,17 +210,6 @@ public class SkateboardMover : MonoBehaviour, IMover
 
 		lastNormal = rampNormal;
 		MoveGeneric();
-	}
-
-	private void OnDrawGizmos()
-	{
-		Gizmos.color = Color.red;
-		Gizmos.DrawWireSphere(rampLocation, 0.1f);
-		Gizmos.color = Color.blue;
-		Gizmos.DrawLine(rampLocation, rampLocation + rampNormal);
-		Gizmos.color = Color.green;
-		Gizmos.DrawLine(rampLocation, rampLocation + lastNormal);
-		Gizmos.DrawLine(transform.position, transform.position + (lastForward * 1.5f));
 	}
 
 	void ApplyGravity()
@@ -132,13 +232,13 @@ public class SkateboardMover : MonoBehaviour, IMover
 	{
 		//Add push force
 		if (stopping)
-			currentRollingSpeed -= pushForce * Time.deltaTime;
-		else if (currentRollingSpeed < maxPushSpeed)
+			currentRollingSpeed -= playerSettings.pushForce * Time.deltaTime;
+		else if (currentRollingSpeed < playerSettings.maxPushForce)
 		{
 			currentRollingSpeed = Mathf.Max(0, currentRollingSpeed);
-			currentRollingSpeed += pushForce * Time.deltaTime;
+			currentRollingSpeed += playerSettings.pushForce * Time.deltaTime;
 		}
-		currentRollingSpeed = Mathf.Clamp(currentRollingSpeed, -maxPushSpeed, maxPushSpeed);
+		currentRollingSpeed = Mathf.Clamp(currentRollingSpeed, -playerSettings.maxPushForce, playerSettings.maxPushForce);
 
 		leavingGroundDuration = 0;
 		if (wasAirborn)
@@ -150,19 +250,19 @@ public class SkateboardMover : MonoBehaviour, IMover
 				rollingSwitch = !rollingSwitch;
 			}
 		}
-		wasAirborn = false;
 
 		currentFallingSpeed = 0f;
 
 		if (shouldJump)
 		{
-			Jump();
+			Jump(playerSettings.jumpForce);
 		}
+		shouldJump = false;
 
 		MoveGeneric();
 	}
 
-	void Jump()
+	void Jump(float force = 0f)
 	{
 		isGrounded = false;
 		shouldJump = false;
@@ -180,13 +280,13 @@ public class SkateboardMover : MonoBehaviour, IMover
 			}
 
 			//Flatten out vertical component of the velocity in world space
-			currentFallingSpeed += -velocity.y * 1.5f;
+			currentFallingSpeed += (-velocity.y * 1.5f) + force;
 			velocity.y = 0;
 			currentRollingSpeed = velocity.magnitude;
 		}
 		else
 		{
-			currentFallingSpeed = jumpForce;
+			currentFallingSpeed = force;
 			//Push out of the ground
 			controller.position = controller.position + Vector3.up * (skinWidth * 2f);
 		}
@@ -217,10 +317,6 @@ public class SkateboardMover : MonoBehaviour, IMover
 	void SetUp(Vector3 up)
 	{
 		Vector3 dir = Vector3.Cross(controller.Right(), up);
-
-		Debug.DrawLine(transform.position, transform.position + up, Color.green);
-		Debug.DrawLine(transform.position, transform.position + dir, Color.blue);
-
 		controller.rotation = Quaternion.LookRotation(dir, up);
 	}
 
@@ -230,10 +326,7 @@ public class SkateboardMover : MonoBehaviour, IMover
 
 		Ray ray = new Ray(controller.position + up, -up);
 		float rayLength = 1f + skinWidth;
-		Debug.DrawLine(ray.origin, ray.origin + (ray.direction * rayLength), Color.red);
-
 		bool newIsGrounded = Physics.Raycast(ray, out RaycastHit hit, rayLength, LayerMask.GetMask("Terrain") | LayerMask.GetMask("Ramp"));
-		Debug.DrawLine(ray.origin, ray.origin + (ray.direction * rayLength), Color.red);
 
 		//Just left the ground
 		if (isGrounded && !newIsGrounded)
@@ -244,7 +337,6 @@ public class SkateboardMover : MonoBehaviour, IMover
 		{
 			ray = new Ray(controller.position + controller.Up(), -controller.Up());
 			Physics.Raycast(ray, out RaycastHit rampHit, rayLength, LayerMask.GetMask("Ramp"));
-			Debug.DrawLine(ray.origin, ray.origin + (ray.direction * rayLength), Color.red);
 			currentRollingSpeed += currentFallingSpeed * Vector3.Dot(controller.Up(), rampHit.normal);
 		}
 
@@ -288,9 +380,55 @@ public class SkateboardMover : MonoBehaviour, IMover
 		}
 	}
 
+	float wallColSize = 0.2f;
+	float wallColLength = 0.7f;
+	Ray wallColRay = new Ray();
+	void CheckForWallCollisions()
+	{
+		Vector3 up = controller.Up();
+		wallColRay = new Ray(controller.position + up, -up);
+		Vector3 forward = rollingSwitch ? -lastForward : lastForward;
+
+		bool hitWall = Physics.CapsuleCast(wallColRay.origin, wallColRay.origin + wallColRay.direction * wallColLength, wallColSize, forward, out RaycastHit hit, wallColSize, LayerMask.GetMask("Terrain") | LayerMask.GetMask("Ramp"));
+
+		//Hit a wall
+		if (hitWall)
+		{
+			//bounce the velocity
+			Vector3 newForward = Vector3.Reflect(controller.Forward(), hit.normal);
+			lastForward = newForward;
+			currentRollingSpeed *= 1 - Mathf.Abs(Vector3.Dot(hit.normal, controller.Forward()));
+			controller.rotation = Quaternion.LookRotation(newForward, controller.Up());
+		}
+	}
+
 	public void Move(Vector3 direction)
 	{
-		turnInput = direction.x * turnSpeed;
+		turnInput = direction.x * playerSettings.turnSpeed;
 		stopping = direction.z < 0f;
+	}
+
+	private void OnDrawGizmos()
+	{
+		/*
+		if (Application.isPlaying)
+		{
+			if (inRamp)
+			{
+				Gizmos.color = Color.red;
+				Gizmos.DrawWireSphere(rampLocation, 0.1f);
+				Gizmos.color = Color.blue;
+				Gizmos.DrawLine(rampLocation, rampLocation + rampNormal);
+				Gizmos.color = Color.green;
+				Gizmos.DrawLine(rampLocation, rampLocation + lastNormal);
+			}
+			Gizmos.DrawLine(controller.position, controller.position + (lastForward * 1.5f));
+
+			Gizmos.color = Color.white;
+			Gizmos.DrawWireSphere(wallColRay.origin, wallColSize);
+			Gizmos.DrawRay(wallColRay.origin, wallColRay.direction * wallColLength);
+			Gizmos.DrawWireSphere(wallColRay.origin + wallColRay.direction * wallColLength, wallColSize);
+		}
+		*/
 	}
 }
