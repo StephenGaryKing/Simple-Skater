@@ -6,16 +6,16 @@ public static class RigidbodyExtensions
 {
     public static Vector3 Right(this Rigidbody rb)
 	{
-		return rb.rotation * Vector3.right;
+		return (rb.rotation * Vector3.right).normalized;
 	}
 
 	public static Vector3 Up(this Rigidbody rb)
 	{
-		return rb.rotation * Vector3.up;
+		return (rb.rotation * Vector3.up).normalized;
 	}
 
 	public static Vector3 Forward(this Rigidbody rb)
 	{
-		return rb.rotation * Vector3.forward;
+		return (rb.rotation * Vector3.forward).normalized;
 	}
 }

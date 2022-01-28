@@ -4,19 +4,23 @@ using UnityEngine;
 
 public class AirbornState : MovementState
 {
-	Vector3 fallVelocity;
+	public float currentRotateVelocity;
+	protected Vector3 velocity;
+	bool hittingWall;
 
-	public override void Enter()
+	[Header("Rotation")]
+	public float rotationDampening;
+	public float maxRotateSpeed;
+
+	public override void Enter(Vector3 velocity)
 	{
-		rb.useGravity = true;
-		rb.isKinematic = false;
+		this.velocity = velocity;
+		currentRotateVelocity = 0;
 	}
 
 	public override void Exit()
 	{
-		rb.useGravity = false;
-		rb.isKinematic = true;
-		rb.velocity = Vector3.zero;
+		//Do nothing
 	}
 
 	public override Vector3 GetVelocity()
@@ -26,16 +30,27 @@ public class AirbornState : MovementState
 
 	public override void GatherInput()
 	{
-		fallVelocity += Physics.gravity * Time.deltaTime;
+		var rotateInput = Input.GetAxis("Horizontal");
+		currentRotateVelocity = Mathf.Lerp(currentRotateVelocity, maxRotateSpeed * rotateInput, rotationDampening * Time.deltaTime);
 	}
 
 	public override void Move()
 	{
-		//Movement is handled by the rigidbody's physics
+		velocity += Physics.gravity * Time.fixedDeltaTime;
+		Vector3 inVelocity = Vector3.Scale(velocity, new Vector3(1, 0, 1));
+		CheckForWallCollisions(inVelocity, out var outVelocity, out var similarity);
+		velocity = outVelocity + Vector3.Scale(velocity, Vector3.up);
+		velocity *= similarity;
+		rb.MovePosition(rb.position + velocity * Time.fixedDeltaTime);
 	}
 
 	public override void Rotate()
 	{
-		//Rotation is handled by the rigidbody's physics
+		var normal = Vector3.Lerp(rb.Up(), Vector3.up, 0.05f);
+
+		float rotSpeed = currentRotateVelocity * Time.fixedDeltaTime;
+		Quaternion addedRotation = Quaternion.Euler(0, rotSpeed, 0);
+		var newForward = Vector3.Cross(rb.Right(), normal);
+		rb.MoveRotation(Quaternion.LookRotation(newForward, normal) * addedRotation);
 	}
 }

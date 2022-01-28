@@ -9,7 +9,7 @@ public class NoclipState : MovementState
 	public float moveSpeedMultiplier = 2;
 	public float rotateSpeedMultiplier = 1;
 
-	public override void Enter()
+	public override void Enter(Vector3 velocity)
 	{
 		//Do nothing with the previous velocity
 	}
