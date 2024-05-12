@@ -4,16 +4,11 @@ using UnityEngine;
 
 public class StackState : MovementState
 {
-	RaycastHit? hit;
-	protected Vector3 velocity;
-
-	[Header("Links")]
-	public SkateboardMover mover;
-
 	public override void Enter(Vector3 velocity)
 	{
-		this.velocity = velocity;
-		hit = null;
+		rb.isKinematic = false;
+		rb.useGravity = true;
+		rb.velocity = velocity;
 	}
 
 	public override void Exit()
@@ -23,7 +18,7 @@ public class StackState : MovementState
 
 	public override void GatherInput()
 	{
-		hit = mover.GetDownHit(rb);
+		
 	}
 
 	public override Vector3 GetVelocity()
@@ -33,35 +28,17 @@ public class StackState : MovementState
 
 	public override void Move()
 	{
-		Vector3 inVelocity = Vector3.Scale(velocity, new Vector3(1, 0, 1));
-		CheckForWallCollisions(inVelocity, out var outVelocity, out var similarity);
-		velocity = outVelocity + Vector3.Scale(velocity, Vector3.up);
-		velocity *= similarity;
-		velocity = Vector3.Lerp(velocity, Vector3.zero, 0.02f);
 
-		Vector3 currentPosition;
-		if (!hit.HasValue)
-		{
-			velocity += Physics.gravity * Time.fixedDeltaTime;
-			currentPosition = rb.position;
-		}
-		else
-		{
-			velocity = Vector3.Scale(velocity, new Vector3(1, 0, 1));
-			currentPosition = hit.Value.point;
-		}
-
-		rb.MovePosition(currentPosition + (velocity * Time.fixedDeltaTime));
 	}
 
 	public override void Rotate()
 	{
-		if (!hit.HasValue)
-			return;
+		var groundNormal = Vector3.up;
 
-		var groundNormal = hit.Value.normal;
+		if (mover.Hit.HasValue)
+			groundNormal = mover.Hit.Value.normal;
+
 		var forward = Vector3.Cross(rb.Right(), groundNormal);
-		CheckForWallCollisions(forward, out var newForward, out var similarity);
-		rb.MoveRotation(Quaternion.LookRotation(newForward, groundNormal));
+		rb.MoveRotation(Quaternion.LookRotation(forward, groundNormal));
 	}
 }

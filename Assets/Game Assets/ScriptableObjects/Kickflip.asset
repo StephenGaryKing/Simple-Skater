@@ -12,8 +12,43 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c3b614495d30a4c4a81608d4d29dafee, type: 3}
   m_Name: Kickflip
   m_EditorClassIdentifier: 
-  actionKey: 101
-  axis: 2
-  motions:
-  - duration: 0.4
-    rotation: 360
+  duration: 0.5
+  xAxis:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  xMult: 0
+  yAxis:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  yMult: 0
+  zAxis:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  zMult: 360

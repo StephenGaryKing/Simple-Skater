@@ -5,6 +5,9 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public abstract class MovementState : MonoBehaviour
 {
+	public Transform cameraLogic;
+
+	protected SkateboardMover mover;
 	public Rigidbody rb
 	{
 		get;
@@ -14,17 +17,7 @@ public abstract class MovementState : MonoBehaviour
 	private void Awake()
 	{
 		rb = GetComponent<Rigidbody>();
-	}
-
-	private void Update()
-	{
-		GatherInput();
-	}
-
-	private void FixedUpdate()
-	{
-		Rotate();
-		Move();
+		mover = GetComponent<SkateboardMover>();
 	}
 
 	public abstract void Enter(Vector3 velocity);
@@ -39,6 +32,11 @@ public abstract class MovementState : MonoBehaviour
 	Ray wallColRay = new Ray();
 	protected bool CheckForWallCollisions(Vector3 velocity, out Vector3 outputVelocity, out float similarity)
 	{
+		outputVelocity = velocity;
+		similarity = 1;
+		return false;
+
+
 		Vector3 up = rb.Up();
 		wallColRay = new Ray(rb.position + up, -up);
 	
@@ -46,7 +44,18 @@ public abstract class MovementState : MonoBehaviour
 
 		//Hit a wall
 		if (hitWall)
+		{
+			var hitAngle = Vector3.Angle(hit.normal, up);
+			//if (hitAngle < 80)
+			//{
+			//	Debug.Log("Hit Angle: " + hitAngle);
+			//	mover.DownHit = hit;
+			//	outputVelocity = velocity;
+			//	similarity = 1;
+			//	return true;
+			//}
 			outputVelocity = Vector3.Reflect(rb.velocity, hit.normal);
+		}
 		else
 			outputVelocity = velocity;
 

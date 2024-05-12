@@ -5,54 +5,47 @@ using DG.Tweening;
 
 public class TrickManager : MonoBehaviour
 {
-	[Range(10, 120)]
-	public int framerate = -1;
+	public TMPro.TMP_Text trickName;
 	public TrickDictionary trickDict;
 	public Transform xAxis;
 	public Transform yAxis;
 	public Transform zAxis;
 
-	Dictionary<TrickScriptable, Transform> trickTransforms = new Dictionary<TrickScriptable, Transform>();
+	object tweenTarget = new object();
+	bool boardFlipped = false;
+	
 
-	private void Start()
+	private void Update()
 	{
-		//foreach(var trick in trickDict.tricks)
-		//{
-		//	Transform trans = new GameObject(trick.name).transform;
-		//	trans.SetParent(visualModel.parent);
-		//	trans.localPosition = Vector3.zero;
-		//	trans.localRotation =  Quaternion.identity;
-		//	trans.localScale = Vector3.one;
-		//	visualModel.SetParent(trans);
-		//	trickTransforms.Add(trick, trans);
-		//}
-	}
-
-	// Update is called once per frame
-	void Update()
-    {
-		Application.targetFrameRate = framerate;
-
-        foreach(var trick in trickDict.tricks)
+		if (Input.GetKeyDown(KeyCode.Space))
 		{
-			if (Input.GetKeyDown(trick.actionKey))
+			StartCoroutine(Trick());
+
+			IEnumerator Trick()
 			{
-				for (int i = 0; i < trick.motions.Count; i++)
-				{
-					switch (trick.axis)
-					{
-						case SteveTween.Axis.X:
-							trick.GetTween(xAxis, i);
-							break;
-						case SteveTween.Axis.Y:
-							trick.GetTween(yAxis, i);
-							break;
-						case SteveTween.Axis.Z:
-							trick.GetTween(zAxis, i);
-							break;
-					}				
-				}
+				yield return new WaitForSeconds(0.1f);
+				var trick = trickDict.GetRandom();
+				DoTrick(trick);
 			}
 		}
-    }
+	}
+
+	void DoTrick(TrickScriptable trick)
+	{
+		xAxis.localRotation = Quaternion.identity;
+		yAxis.localRotation = boardFlipped? Quaternion.Euler(Vector3.up * 180) : Quaternion.identity;
+		zAxis.localRotation = Quaternion.identity;
+
+		float boardFlipMod = boardFlipped ? -1 : 1;
+
+		DOTween.Kill(tweenTarget);
+		xAxis.DOLocalRotate(Vector3.right * trick.xMult, trick.duration, RotateMode.LocalAxisAdd).SetEase(trick.xAxis).SetTarget(tweenTarget);
+		yAxis.DOLocalRotate(Vector3.up * trick.yMult, trick.duration, RotateMode.LocalAxisAdd).SetEase(trick.yAxis).SetTarget(tweenTarget);
+		zAxis.DOLocalRotate(Vector3.forward * trick.zMult * boardFlipMod, trick.duration, RotateMode.LocalAxisAdd).SetEase(trick.zAxis).SetTarget(tweenTarget);
+
+		if (trick.flipsBoardDirection)
+			boardFlipped = !boardFlipped;
+
+		trickName.SetText(trick.name);
+	}
 }

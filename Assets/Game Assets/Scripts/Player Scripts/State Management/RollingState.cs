@@ -4,9 +4,7 @@ using UnityEngine;
 
 public class RollingState : MovementState
 {
-	float currentMoveVelocity;
 	float currentRotateVelocity;
-	RaycastHit? hit;
 	bool rollingSwitch = false;
 
 	[Header("Rotation")]
@@ -14,25 +12,25 @@ public class RollingState : MovementState
 	public float maxRotateSpeed;
 	[Header("Movement")]
 	public float movementDampening;
-	public float maxMoveSpeed;
-	[Header("Links")]
-	public SkateboardMover mover;
+	public float regularMaxMoveSpeed;
+	public float fastMaxMoveSpeed;
+	public float gripSpeed;
 
+	float slopeTheashold = 0.9f;
 	Vector3 Velocity => rollingSwitch ? -rb.Forward() : rb.Forward();
-	bool OverRotated => Vector3.Dot(oldNormal, newNormal) < 0.8f;
+	bool OverRotated => Vector3.Dot(oldNormal, newNormal) < slopeTheashold && Vector3.Dot(rb.velocity, Vector3.up) > slopeTheashold && Vector3.Dot(newNormal, Vector3.up) > slopeTheashold;
 	public Vector3 oldNormal = Vector3.up;
 	public Vector3 newNormal = Vector3.up;
+	RaycastHit? hit = null;
 
 	public override void Enter(Vector3 velocity)
 	{
-		rb.MovePosition(rb.position + velocity);
-		currentMoveVelocity = 0;
 		currentRotateVelocity = 0;
-		hit = mover.GetDownHit(rb);
-		RotateToNormal();
-		if (hit.HasValue)
+		if (mover.Hit.HasValue)
 		{
-			newNormal = hit.Value.normal;
+			hit = mover.Hit;
+			ApplyRotation();
+			newNormal = mover.Hit.Value.normal;
 			oldNormal = newNormal;
 		}
 
@@ -43,14 +41,11 @@ public class RollingState : MovementState
 			rollingSwitch = !rollingSwitch;
 			Debug.Log($"Changed Direction: {(rollingSwitch? "Switch" : "Regular")}");
 		}
-
-		if (velocity.magnitude > 0.5f && Mathf.Abs(dot) < 0.2f)
-			mover.SetStacked();
-		//Transfer speed based on coherance with travel direction
-		else
-			velocity *= Mathf.Abs(dot);
-
-		currentMoveVelocity = velocity.magnitude;
+			
+		velocity *= Mathf.Abs(dot);
+		rb.velocity = velocity;
+		rb.useGravity = false;
+		rb.isKinematic = false;
 	}
 
 	public override void Exit()
@@ -65,24 +60,37 @@ public class RollingState : MovementState
 
 	public override void GatherInput()
 	{
-		hit = mover.GetDownHit(rb);
-
-		var rotateInput = Input.GetAxis("Horizontal");
+		//float maxSpeed = Input.GetKey(KeyCode.Space) ? fastMaxMoveSpeed : regularMaxMoveSpeed;
+		var moveVec = InputManagement.Move;
+		var rotateInput = moveVec.x;
 		currentRotateVelocity = Mathf.Lerp(currentRotateVelocity, maxRotateSpeed * rotateInput, rotationDampening * Time.deltaTime);
 
-		if (Input.GetKey(KeyCode.S))
-			currentMoveVelocity = Mathf.Lerp(currentMoveVelocity, 0, movementDampening * 2 * Time.deltaTime);
-		else
-			currentMoveVelocity = Mathf.Lerp(currentMoveVelocity, maxMoveSpeed, movementDampening * Time.deltaTime);
+		if (moveVec.y < 0)
+			rb.velocity *= 0.99f;
 
+		if (moveVec.y > 0)
+			rb.AddForce(Velocity.normalized * 100);
 	}
 
 	public override void Move()
 	{
-		var moveDir = Velocity * currentMoveVelocity * Time.fixedDeltaTime;
-		var currentPosition = hit.HasValue && !OverRotated ? hit.Value.point : rb.position;
-		rb.position = currentPosition;
-		rb.MovePosition(rb.position + moveDir);
+		var moveDir = Velocity;
+		FixPosition();
+		rb.velocity = moveDir * rb.velocity.magnitude;
+	}
+
+	void FixPosition()
+	{
+		Ray localRay = new Ray(rb.position, -rb.Up());
+		float rayLength = mover.collider.radius + 0.05f;
+
+		if (Physics.Raycast(localRay, out RaycastHit hitLocal, rayLength, LayerMask.GetMask("Terrain") | LayerMask.GetMask("Ramp")))
+		{
+			rb.MovePosition(hitLocal.point + (rb.Up() * mover.collider.radius));
+			hit = hitLocal;
+			return;
+		}
+		hit = null;
 	}
 
 	public override void Rotate()
@@ -100,20 +108,32 @@ public class RollingState : MovementState
 		if (OverRotated)
 			return;
 
-		RotateToNormal();
+		ApplyRotation();
 	}
 
-	void RotateToNormal()
+	void ApplyRotation()
 	{
+		bool useNormal = true;
+
 		if (!hit.HasValue)
 			return;
 
 		var groundNormal = hit.Value.normal;
+		
 		float rotSpeed = currentRotateVelocity * Time.fixedDeltaTime;
 		Quaternion addedRotation = Quaternion.Euler(0, rotSpeed, 0);
+
+		if (rb.velocity.magnitude >= gripSpeed)
+			if (Vector3.Dot(groundNormal, rollingSwitch ? -rb.Forward() : rb.Forward()) >= 0)
+				useNormal = false;
+
+		if (!useNormal)
+		{
+			Debug.Log("Not using normal");
+			groundNormal = rb.Up();
+		}
+
 		var forward = Vector3.Cross(rb.Right(), groundNormal);
-		CheckForWallCollisions(rollingSwitch? -forward : forward, out var newForward, out var similarity);
-		currentMoveVelocity *= similarity;
-		rb.MoveRotation(Quaternion.LookRotation(rollingSwitch? -newForward : newForward, groundNormal) * addedRotation);
+		rb.MoveRotation(Quaternion.LookRotation(forward, groundNormal) * addedRotation);
 	}
 }

@@ -4,9 +4,7 @@ using UnityEngine;
 
 public class AirbornState : MovementState
 {
-	public float currentRotateVelocity;
-	protected Vector3 velocity;
-	bool hittingWall;
+	float currentRotateVelocity;
 
 	[Header("Rotation")]
 	public float rotationDampening;
@@ -14,7 +12,9 @@ public class AirbornState : MovementState
 
 	public override void Enter(Vector3 velocity)
 	{
-		this.velocity = velocity;
+		rb.isKinematic = false;
+		rb.velocity = velocity;
+		rb.useGravity = true;
 		currentRotateVelocity = 0;
 	}
 
@@ -36,21 +36,39 @@ public class AirbornState : MovementState
 
 	public override void Move()
 	{
-		velocity += Physics.gravity * Time.fixedDeltaTime;
-		Vector3 inVelocity = Vector3.Scale(velocity, new Vector3(1, 0, 1));
-		CheckForWallCollisions(inVelocity, out var outVelocity, out var similarity);
-		velocity = outVelocity + Vector3.Scale(velocity, Vector3.up);
-		velocity *= similarity;
-		rb.MovePosition(rb.position + velocity * Time.fixedDeltaTime);
+		//Let physics move the player
 	}
 
 	public override void Rotate()
 	{
-		var normal = Vector3.Lerp(rb.Up(), Vector3.up, 0.05f);
-
+		var normal = rb.Up();
+		float dot = Vector3.Dot(normal, Vector3.up);
 		float rotSpeed = currentRotateVelocity * Time.fixedDeltaTime;
+		float lerpSpeed = 1;
+
+		if (mover.mostRecentRamp.Key == null || dot > 0.1f || dot < 0)
+		{
+			Ray localRay = new Ray(rb.position + rb.Up(), rb.velocity.normalized);
+			float rayLength = rb.velocity.magnitude * Time.fixedDeltaTime * 20f;
+
+			if (Physics.Raycast(localRay, out RaycastHit hit, rayLength,
+				LayerMask.GetMask("Terrain") | LayerMask.GetMask("Ramp")))
+			{
+				normal = hit.normal;
+				lerpSpeed = 0.1f;
+			}
+			else
+			{
+				normal = Vector3.Slerp(normal, Vector3.up, 0.05f);
+			}
+		}
+		
 		Quaternion addedRotation = Quaternion.Euler(0, rotSpeed, 0);
 		var newForward = Vector3.Cross(rb.Right(), normal);
-		rb.MoveRotation(Quaternion.LookRotation(newForward, normal) * addedRotation);
+
+		var newRotation = Quaternion.LookRotation(newForward, normal);
+		newRotation = Quaternion.Lerp(rb.rotation, newRotation, lerpSpeed);
+
+		rb.MoveRotation(newRotation * addedRotation);
 	}
 }
